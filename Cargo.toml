@@ -1,0 +1,9 @@
+[package]
+
+name = "lifelike"
+version = "0.0.1"
+authors = [ "Jeff Parsons <jeff@parsons.io>" ]
+
+[[bin]]
+
+name = "lifelike"
