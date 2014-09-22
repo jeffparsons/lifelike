@@ -7,3 +7,7 @@ authors = [ "Jeff Parsons <jeff@parsons.io>" ]
 [[bin]]
 
 name = "lifelike"
+
+[dependencies.png]
+
+git = "https://github.com/servo/rust-png.git"
