@@ -4,45 +4,19 @@ extern crate png;
 use collections::Deque;
 use collections::RingBuf;
 
-use png::load_png;
-use png::RGBA8;
+use image::{Image, Color, Point};
 
-struct Point {
-    x: int,
-    y: int,
-}
+mod image;
 
 struct Cell {
     color: Color
-}
-
-struct Color {
-    red: u8,
-    green: u8,
-    blue: u8,
-}
-
-impl PartialEq for Color {
-    fn eq(&self, other: &Color) -> bool {
-        self.red == other.red &&
-        self.green == other.green &&
-        self.blue == other.blue
-    }
 }
 
 fn main() {
     // Load example PNG image.
     let file = "examples/cartesian_grid.png";
     println!("Loading '{}'.", file);
-    let image = match load_png(&Path::new(file)) {
-        Err(m) => fail!(m),
-        Ok(image) => image,
-    };
-    println!("File dimensions: (width, height) = ({}, {}).", image.width, image.height);
-    let pixel_data = match image.pixels {
-        RGBA8(pixels) => pixels,
-        _ => fail!("Only handling RGBA8 input for now."),
-    };
+    let image = Image::load_png(&Path::new(file));
 
     // Explore image breadth-first to break it
     // into cells of the same color.
@@ -60,12 +34,11 @@ fn main() {
             None => fail!(),
             Some(p) => p,
         };
-        let image_width = image.width as int;
         // It might have already been consumed by another cell.
-        if cell_map[index(point, image_width)] == None {
-            cells.push(Cell{ color: color_of_point(point, image_width, &pixel_data) });
+        if cell_map[image.linear_index(point)] == None {
+            cells.push(Cell{ color: image.color_at(point) });
             let cell_index = cells.len() - 1;
-            *cell_map.get_mut(index(point, image_width)) = Some(cell_index);
+            *cell_map.get_mut(image.linear_index(point)) = Some(cell_index);
             let cell = cells.get_mut(cell_index);
 
             // Need to explore a single cell exhaustively before moving on;
@@ -78,9 +51,7 @@ fn main() {
                 point,
                 cell,
                 cell_index,
-                image_width,
-                image.height as int,
-                &pixel_data
+                &image,
             );
         }
     }
@@ -94,9 +65,7 @@ fn flood_cell(
     starting_point: Point,
     cell: &mut Cell,
     cell_index: uint,
-    image_width: int,
-    image_height: int,
-    pixel_data: &Vec<u8>
+    image: &Image
 ) {
     cell_point_queue.clear();
     cell_point_queue.push(starting_point);
@@ -111,14 +80,14 @@ fn flood_cell(
             // TODO: support wrapping, and otherwise mark
             // this as the edge of the cell.
             if neighbor.x < 0 { continue; }
-            if neighbor.x >= image_width { continue; }
+            if neighbor.x >= image.width as int { continue; }
             if neighbor.y < 0 { continue; }
-            if neighbor.y >= image_height { continue; }
+            if neighbor.y >= image.height as int { continue; }
 
-            let neighbor_cell = cell_map.get_mut(index(*neighbor, image_width));
+            let neighbor_cell = cell_map.get_mut(image.linear_index(*neighbor));
             match *neighbor_cell {
                 None => {
-                    if color_of_point(*neighbor, image_width, pixel_data) == cell.color {
+                    if image.color_at(*neighbor) == cell.color {
                         // Same color as this cell; add it to the cell and queue it
                         // up as a starting point for further explanation.
                         *neighbor_cell = Some(cell_index);
@@ -137,19 +106,6 @@ fn flood_cell(
             }
         }
     }
-}
-
-fn color_of_point(point: Point, image_width: int, pixel_data: &Vec<u8>) -> Color {
-    let pixel_offset = index(point, image_width) * 4;
-    Color{
-        red: pixel_data[pixel_offset],
-        green: pixel_data[pixel_offset + 1],
-        blue: pixel_data[pixel_offset + 2],
-    }
-}
-
-fn index(point: Point, image_width: int) -> uint {
-    (point.y * image_width + point.x) as uint
 }
 
 fn point_neighbors(point: Point) -> [Point, ..8] {
