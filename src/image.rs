@@ -4,8 +4,8 @@ use png::RGBA8;
 
 pub struct Image {
     pub pixel_data: Vec<u8>,
-    pub width: uint,
-    pub height: uint,
+    pub width: u32,
+    pub height: u32,
 }
 
 pub struct Point {
@@ -40,8 +40,26 @@ impl Image {
         };
         Image {
             pixel_data: pixel_data,
-            width: image.width as uint,
-            height: image.height as uint,
+            width: image.width,
+            height: image.height,
+        }
+    }
+
+    pub fn save_png(&self, path: &Path) {
+        let mut img = png::Image {
+            width: self.width,
+            height: self.height,
+            pixels: png::RGBA8(self.pixel_data.clone()),
+        };
+        let res = png::store_png(&mut img, path);
+        assert!(res.is_ok());
+    }
+
+    pub fn white(width: u32, height: u32) -> Image {
+        Image {
+            width: width,
+            height: height,
+            pixel_data: Vec::from_elem((width * height * 4) as uint, 255u8),
         }
     }
 
@@ -54,7 +72,14 @@ impl Image {
         }
     }
 
+    pub fn set_color_at(&mut self, point: Point, color: Color) {
+        let pixel_offset = self.linear_index(point) * 4;
+        *self.pixel_data.get_mut(pixel_offset) = color.red;
+        *self.pixel_data.get_mut(pixel_offset + 1) = color.green;
+        *self.pixel_data.get_mut(pixel_offset + 2) = color.blue;
+    }
+
     pub fn linear_index(&self, point: Point) -> uint {
-        point.y as uint * self.width + point.x as uint
+        point.y as uint * self.width as uint + point.x as uint
     }
 }

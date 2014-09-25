@@ -18,10 +18,14 @@ fn main() {
     println!("Loading '{}'.", file);
     let image = Image::load_png(&Path::new(file));
 
+    // Draw discovered cell boundaries into a new image.
+    let mut cell_boundaries = Image::white(image.width, image.height);
+
     // Explore image breadth-first to break it
     // into cells of the same color.
     println!("Finding cells in image...");
     let pixels = (image.width * image.height) as uint;
+    // TODO: reinstate separate `visited` map, too, for faster checking?
     let mut cell_map: Vec<Option<uint>> = Vec::from_elem(pixels, None);
     let mut cells: Vec<Cell> = Vec::with_capacity(100);
     let mut point_queue: RingBuf<Point> = RingBuf::with_capacity(pixels);
@@ -52,10 +56,14 @@ fn main() {
                 cell,
                 cell_index,
                 &image,
+                &mut cell_boundaries,
             );
         }
     }
     println!("Found {} cells.", cells.len());
+
+    // Write out discovered cell boundaries.
+    cell_boundaries.save_png(&Path::new("image_out/cartesian_grid_boundaries.png"));
 }
 
 fn flood_cell(
@@ -65,7 +73,8 @@ fn flood_cell(
     starting_point: Point,
     cell: &mut Cell,
     cell_index: uint,
-    image: &Image
+    image: &Image,
+    cell_boundaries: &mut Image,
 ) {
     cell_point_queue.clear();
     cell_point_queue.push(starting_point);
@@ -77,12 +86,17 @@ fn flood_cell(
         let neighbors = point_neighbors(point);
         for neighbor in neighbors.iter() {
             // Ignore if outside the image bounds.
-            // TODO: support wrapping, and otherwise mark
-            // this as the edge of the cell.
-            if neighbor.x < 0 { continue; }
-            if neighbor.x >= image.width as i32 { continue; }
-            if neighbor.y < 0 { continue; }
-            if neighbor.y >= image.height as i32 { continue; }
+            // TODO: support wrapping
+            let oob =
+                neighbor.x < 0 ||
+                neighbor.x >= image.width as i32 ||
+                neighbor.y < 0 ||
+                neighbor.y >= image.height as i32;
+            if oob {
+                // Mark the current pixel (not the neighbor) as the edge of a cell.
+                mark_cell_border(point, cell_boundaries);
+                continue;
+            }
 
             let neighbor_cell = cell_map.get_mut(image.linear_index(*neighbor));
             match *neighbor_cell {
@@ -97,15 +111,25 @@ fn flood_cell(
                         // be the start of another cell.
                         point_queue.push(*neighbor);
 
-                        // TODO: mark this as the edge of the current cell.
+                        // Neighbor is another color, so will eventually be part of another cell.
+                        // Mark the current pixel (not the neighbor) as the edge of a cell.
+                        mark_cell_border(point, cell_boundaries);
                     }
                 },
                 Some(int) => {
-                    // TODO: mark this as the edge of the current cell.
+                    if image.color_at(*neighbor) != cell.color {
+                        // Neighbor is already part of another cell.
+                        // Mark the current pixel (not the neighbor) as the edge of a cell.
+                        mark_cell_border(point, cell_boundaries);
+                    }
                 }
             }
         }
     }
+}
+
+fn mark_cell_border(point: Point, cell_boundaries: &mut Image) {
+    cell_boundaries.set_color_at(point, Color{red: 127, green: 127, blue: 127});
 }
 
 fn point_neighbors(point: Point) -> [Point, ..8] {
