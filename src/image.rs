@@ -9,8 +9,8 @@ pub struct Image {
 }
 
 pub struct Point {
-    pub x: int,
-    pub y: int,
+    pub x: i32,
+    pub y: i32,
 }
 
 pub struct Color {

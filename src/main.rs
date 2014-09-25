@@ -80,9 +80,9 @@ fn flood_cell(
             // TODO: support wrapping, and otherwise mark
             // this as the edge of the cell.
             if neighbor.x < 0 { continue; }
-            if neighbor.x >= image.width as int { continue; }
+            if neighbor.x >= image.width as i32 { continue; }
             if neighbor.y < 0 { continue; }
-            if neighbor.y >= image.height as int { continue; }
+            if neighbor.y >= image.height as i32 { continue; }
 
             let neighbor_cell = cell_map.get_mut(image.linear_index(*neighbor));
             match *neighbor_cell {
