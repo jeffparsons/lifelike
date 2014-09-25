@@ -14,7 +14,7 @@ struct Cell {
 
 fn main() {
     // Load example PNG image.
-    let file = "examples/cartesian_grid.png";
+    let file = "examples/hex_square_tri.png";
     println!("Loading '{}'.", file);
     let image = Image::load_png(&Path::new(file));
 
@@ -63,7 +63,7 @@ fn main() {
     println!("Found {} cells.", cells.len());
 
     // Write out discovered cell boundaries.
-    cell_boundaries.save_png(&Path::new("image_out/cartesian_grid_boundaries.png"));
+    cell_boundaries.save_png(&Path::new("image_out/cell_boundaries.png"));
 }
 
 fn flood_cell(
