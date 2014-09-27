@@ -1,19 +1,25 @@
+extern crate core;
 extern crate collections;
 extern crate png;
 extern crate getopts;
 
+use core::mem;
+
 use std::os;
-use getopts::{optopt, optflag, getopts, OptGroup};
+use std::rand::{task_rng, Rng};
 
 use collections::Deque;
 use collections::RingBuf;
 
-use image::{Image, Color, Point};
+use getopts::{optflag, getopts};
 
+use image::{Image, Color, Point};
 mod image;
 
 struct Cell {
-    color: Color
+    color: Color,
+    neighbors: Vec<uint>,
+    pixels: Vec<Point>,
 }
 
 fn main() {
@@ -29,7 +35,8 @@ fn main() {
     let wrap = matches.opt_present("w");
 
     // Load example PNG image.
-    let file = "examples/hex_square_tri.png";
+    // let file = "examples/hex_square_tri.png";
+    let file = "examples/cartesian_grid.png";
     println!("Loading '{}'.", file);
     let image = Image::load_png(&Path::new(file));
 
@@ -55,20 +62,23 @@ fn main() {
         };
         // It might have already been consumed by another cell.
         if cell_map[image.linear_index(point)] == None {
-            cells.push(Cell{ color: image.color_at(point) });
+            cells.push(Cell{
+                color: image.color_at(point),
+                neighbors: Vec::with_capacity(8),
+                pixels: Vec::with_capacity(100),
+            });
             let cell_index = cells.len() - 1;
             *cell_map.get_mut(image.linear_index(point)) = Some(cell_index);
-            let cell = cells.get_mut(cell_index);
 
             // Need to explore a single cell exhaustively before moving on;
             // otherwise we might interpret a strangely shaped cell as two
             // different cells and then have to join them up somehow later.
             flood_cell(
+                &mut cells,
                 &mut cell_map,
                 &mut point_queue,
                 &mut cell_point_queue,
                 point,
-                cell,
                 cell_index,
                 &image,
                 &mut cell_boundaries,
@@ -80,19 +90,82 @@ fn main() {
 
     // Write out discovered cell boundaries.
     cell_boundaries.save_png(&Path::new("image_out/cell_boundaries.png"));
+
+    // Randomise initial world state.
+    let mut rng = task_rng();
+    let rng_iter = rng.gen_iter::<bool>();
+    let mut front: &mut Vec<bool> = &mut rng_iter.take(cells.len()).collect::<Vec<bool>>();
+
+    // Make back buffer for world.
+    let mut back: &mut Vec<bool> = &mut Vec::from_elem(cells.len(), false);
+
+    // Step world, writing out an image of the current state
+    // at the start of each frame.
+    let mut world_image = Image::white(image.width, image.height);
+    for frame in range(0u, 100) {
+        // Write out current state.
+        for (i, cell) in cells.iter().enumerate() {
+            for p in cell.pixels.iter() {
+                let color = if (*front)[i] {
+                    Color{ red: 63, green: 63, blue: 63 }
+                } else {
+                    Color{ red: 255, green: 255, blue: 255 }
+                };
+                world_image.set_color_at(*p, color);
+            }
+        }
+        // Overlay cell boundaries.
+        for y in range(0, image.height as i32) {
+            for x in range(0, image.width as i32) {
+                let p = Point{ x: x, y: y };
+                let color_in_boundary_image = cell_boundaries.color_at(p);
+                let white = Color{ red: 255, green: 255, blue: 255 };
+                if color_in_boundary_image != white {
+                    world_image.set_color_at(p, color_in_boundary_image);
+                }
+            }
+        }
+
+        let frame_file = format!("image_out/frame_{:0>8}.png", frame);
+        println!("Writing frame to '{}'.", frame_file);
+        world_image.save_png(&Path::new(frame_file));
+
+        // Calculate next frame.
+        for i in range(0, cells.len()) {
+            let alive = (*front)[i];
+            let mut living_neighbors = 0u8;
+            for neighbor in cells[i].neighbors.iter() {
+                if (*front)[*neighbor] {
+                    living_neighbors += 1;
+                }
+            }
+            if living_neighbors < 2 {
+                *back.get_mut(i) = false; // Underpopulation
+            } else if alive && living_neighbors <= 3 {
+                *back.get_mut(i) = true; // Survival
+            } else if !alive && living_neighbors == 3 {
+                *back.get_mut(i) = true; // Reproduction
+            } else {
+                *back.get_mut(i) = false; // Overcrowding or already dead
+            }
+        }
+
+        mem::swap(&mut front, &mut back);
+    }
 }
 
 fn flood_cell(
+    cells: &mut Vec<Cell>,
     cell_map: &mut Vec<Option<uint>>,
     point_queue: &mut RingBuf<Point>,
     cell_point_queue: &mut RingBuf<Point>,
     starting_point: Point,
-    cell: &mut Cell,
     cell_index: uint,
     image: &Image,
     cell_boundaries: &mut Image,
     wrap: bool,
 ) {
+    let cell_color = (*cells)[cell_index].color;
     cell_point_queue.clear();
     cell_point_queue.push(starting_point);
     while !cell_point_queue.is_empty() {
@@ -100,6 +173,7 @@ fn flood_cell(
             None => fail!(),
             Some(p) => p,
         };
+        cells.get_mut(cell_index).pixels.push(point);
         let neighbors = point_neighbors(point);
         for neighbor in neighbors.iter() {
             let mut neighbor = *neighbor;
@@ -130,7 +204,7 @@ fn flood_cell(
             let neighbor_cell = cell_map.get_mut(image.linear_index(neighbor));
             match *neighbor_cell {
                 None => {
-                    if image.color_at(neighbor) == cell.color {
+                    if image.color_at(neighbor) == cell_color {
                         // Same color as this cell; add it to the cell and queue it
                         // up as a starting point for further explanation.
                         *neighbor_cell = Some(cell_index);
@@ -145,11 +219,17 @@ fn flood_cell(
                         mark_cell_border(point, cell_boundaries);
                     }
                 },
-                Some(int) => {
-                    if image.color_at(neighbor) != cell.color {
+                Some(neighbor_cell) => {
+                    if image.color_at(neighbor) != cell_color {
                         // Neighbor is already part of another cell.
                         // Mark the current pixel (not the neighbor) as the edge of a cell.
                         mark_cell_border(point, cell_boundaries);
+
+                        // Mark the cells as neighbors if they're not already.
+                        if !(*cells)[cell_index].neighbors.contains(&neighbor_cell) {
+                            cells.get_mut(cell_index).neighbors.push(neighbor_cell);
+                            cells.get_mut(neighbor_cell).neighbors.push(cell_index);
+                        }
                     }
                 }
             }
