@@ -1,5 +1,9 @@
 extern crate collections;
 extern crate png;
+extern crate getopts;
+
+use std::os;
+use getopts::{optopt, optflag, getopts, OptGroup};
 
 use collections::Deque;
 use collections::RingBuf;
@@ -13,6 +17,17 @@ struct Cell {
 }
 
 fn main() {
+    // Parse program arguments.
+    let args: Vec<String> = os::args();
+    let opts = [
+        optflag("w", "wrap", "treat image space as toroidal")
+    ];
+    let matches = match getopts(args.tail(), opts) {
+        Ok(m) => { m }
+        Err(f) => { fail!(f.to_string()) }
+    };
+    let wrap = matches.opt_present("w");
+
     // Load example PNG image.
     let file = "examples/hex_square_tri.png";
     println!("Loading '{}'.", file);
@@ -57,6 +72,7 @@ fn main() {
                 cell_index,
                 &image,
                 &mut cell_boundaries,
+                wrap,
             );
         }
     }
@@ -75,6 +91,7 @@ fn flood_cell(
     cell_index: uint,
     image: &Image,
     cell_boundaries: &mut Image,
+    wrap: bool,
 ) {
     cell_point_queue.clear();
     cell_point_queue.push(starting_point);
@@ -85,31 +102,43 @@ fn flood_cell(
         };
         let neighbors = point_neighbors(point);
         for neighbor in neighbors.iter() {
+            let mut neighbor = *neighbor;
+
+            // Wrap coordinates if requested.
+            // Note that the result of % depends on the sign of the divisor,
+            // so transpose everything north to avoid negative numbers entirely.
+            if wrap {
+                neighbor = Point{
+                    x: (neighbor.x + image.width as i32) % image.width as i32,
+                    y: (neighbor.y + image.height as i32) % image.height as i32,
+                };
+            }
+
             // Ignore if outside the image bounds.
-            // TODO: support wrapping
-            let oob =
+            let oob = !wrap && (
                 neighbor.x < 0 ||
                 neighbor.x >= image.width as i32 ||
                 neighbor.y < 0 ||
-                neighbor.y >= image.height as i32;
+                neighbor.y >= image.height as i32
+            );
             if oob {
                 // Mark the current pixel (not the neighbor) as the edge of a cell.
                 mark_cell_border(point, cell_boundaries);
                 continue;
             }
 
-            let neighbor_cell = cell_map.get_mut(image.linear_index(*neighbor));
+            let neighbor_cell = cell_map.get_mut(image.linear_index(neighbor));
             match *neighbor_cell {
                 None => {
-                    if image.color_at(*neighbor) == cell.color {
+                    if image.color_at(neighbor) == cell.color {
                         // Same color as this cell; add it to the cell and queue it
                         // up as a starting point for further explanation.
                         *neighbor_cell = Some(cell_index);
-                        cell_point_queue.push(*neighbor);
+                        cell_point_queue.push(neighbor);
                     } else {
                         // Doesn't belong to this cell; queue it up to maybe
                         // be the start of another cell.
-                        point_queue.push(*neighbor);
+                        point_queue.push(neighbor);
 
                         // Neighbor is another color, so will eventually be part of another cell.
                         // Mark the current pixel (not the neighbor) as the edge of a cell.
@@ -117,7 +146,7 @@ fn flood_cell(
                     }
                 },
                 Some(int) => {
-                    if image.color_at(*neighbor) != cell.color {
+                    if image.color_at(neighbor) != cell.color {
                         // Neighbor is already part of another cell.
                         // Mark the current pixel (not the neighbor) as the edge of a cell.
                         mark_cell_border(point, cell_boundaries);
