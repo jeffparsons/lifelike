@@ -10,8 +10,9 @@ use std::rand::{task_rng, Rng};
 
 use collections::Deque;
 use collections::RingBuf;
+use collections::String;
 
-use getopts::{optflag, getopts};
+use getopts::{optopt, optflag, getopts, OptGroup, Matches, usage};
 
 use image::{Image, Color, Point};
 mod image;
@@ -22,23 +23,67 @@ struct Cell {
     pixels: Vec<Point>,
 }
 
+fn print_usage(program: &str, opts: &[OptGroup]) {
+    let short_message = format!("Usage: {} [options] <input_file>", program);
+    println!("{}", usage(short_message.as_slice(), opts));
+}
+
+fn get_uint_opt(matches: &Matches, opt_name: &str) -> Option<uint> {
+    match matches.opt_str(opt_name) {
+        Some(string) => match from_str(string.as_slice().trim()) {
+            Some(value) => Some(value),
+            None => fail!("Bad uint arg"),
+        },
+        None => None,
+    }
+}
+
 fn main() {
     // Parse program arguments.
     let args: Vec<String> = os::args();
+    let program = args[0].clone();
     let opts = [
-        optflag("w", "wrap", "treat image space as toroidal")
+        optopt("", "smin", "minimum neighbors for existing cell to survive", "UINT"),
+        optopt("", "smax", "maximum neighbors for existing cell to survive", "UINT"),
+        optopt("", "rmin", "minimum neighbors for new cell to be born", "UINT"),
+        optopt("", "rmax", "maximum neighbors for new cell to be born", "UINT"),
+        optopt("f", "frames", "number of frames to render", "UINT"),
+        optflag("w", "wrap", "treat image space as toroidal"),
+        optflag("p", "proportional", "weight neighbors by how many neighbors they have"),
+        optopt("o", "output-prefix", "prefix for output frame files", "STRING"),
+        optflag("h", "help", "print usage information"),
     ];
     let matches = match getopts(args.tail(), opts) {
         Ok(m) => { m }
         Err(f) => { fail!(f.to_string()) }
     };
+    if matches.opt_present("h") {
+        print_usage(program.as_slice(), opts);
+        return;
+    }
+    let input = if matches.free.len() == 1 {
+        matches.free[0].clone()
+    } else {
+        print_usage(program.as_slice(), opts);
+        return;
+    };
+    let output_prefix = matches.opt_str("output-prefix").unwrap_or(String::from_str("frame_"));
+
+    let frames = get_uint_opt(&matches, "frames").unwrap_or(100);
     let wrap = matches.opt_present("w");
+    let proportional = matches.opt_present("p");
+
+    let smin = get_uint_opt(&matches, "smin").unwrap_or(2);
+    let smax = get_uint_opt(&matches, "smax").unwrap_or(3);
+    let rmin = get_uint_opt(&matches, "rmin").unwrap_or(3);
+    let rmax = get_uint_opt(&matches, "rmax").unwrap_or(3);
 
     // Load example PNG image.
-    // let file = "examples/hex_square_tri.png";
-    let file = "examples/cartesian_grid.png";
-    println!("Loading '{}'.", file);
-    let image = Image::load_png(&Path::new(file));
+    // let file = "examples/hex_square_tri_large.png";
+    // let file = "examples/cartesian_grid.png";
+    // let file = "examples/hex_grid.png";
+    println!("Loading '{}'.", input);
+    let image = Image::load_png(&Path::new(input));
 
     // Draw discovered cell boundaries into a new image.
     let mut cell_boundaries = Image::white(image.width, image.height);
@@ -89,7 +134,7 @@ fn main() {
     println!("Found {} cells.", cells.len());
 
     // Write out discovered cell boundaries.
-    cell_boundaries.save_png(&Path::new("image_out/cell_boundaries.png"));
+    // cell_boundaries.save_png(&Path::new("image_out/cell_boundaries.png"));
 
     // Randomise initial world state.
     let mut rng = task_rng();
@@ -102,7 +147,7 @@ fn main() {
     // Step world, writing out an image of the current state
     // at the start of each frame.
     let mut world_image = Image::white(image.width, image.height);
-    for frame in range(0u, 100) {
+    for frame in range(0, frames) {
         // Write out current state.
         for (i, cell) in cells.iter().enumerate() {
             for p in cell.pixels.iter() {
@@ -126,27 +171,36 @@ fn main() {
             }
         }
 
-        let frame_file = format!("image_out/frame_{:0>8}.png", frame);
+        let frame_file = format!("image_out/{}{:0>8}.png", output_prefix, frame);
         println!("Writing frame to '{}'.", frame_file);
         world_image.save_png(&Path::new(frame_file));
 
         // Calculate next frame.
         for i in range(0, cells.len()) {
             let alive = (*front)[i];
-            let mut living_neighbors = 0u8;
+            let mut living_neighbors = 0u;
             for neighbor in cells[i].neighbors.iter() {
                 if (*front)[*neighbor] {
-                    living_neighbors += 1;
+                    if proportional {
+                        living_neighbors += cells[*neighbor].neighbors.len();
+                    } else {
+                        living_neighbors += 1;
+                    }
                 }
             }
-            if living_neighbors < 2 {
-                *back.get_mut(i) = false; // Underpopulation
-            } else if alive && living_neighbors <= 3 {
-                *back.get_mut(i) = true; // Survival
-            } else if !alive && living_neighbors == 3 {
-                *back.get_mut(i) = true; // Reproduction
+            if proportional {
+                living_neighbors = living_neighbors * 4 / cells[i].neighbors.len();
+            }
+
+            // Apply life rules.
+            *back.get_mut(i) = if alive {
+                living_neighbors >= smin && // Sufficient neighbors to sustain.
+                living_neighbors <= smax // Not so many we're overcrowded.
             } else {
-                *back.get_mut(i) = false; // Overcrowding or already dead
+                living_neighbors >= rmin && // Sufficient neighbors to reproduce.
+                living_neighbors <= rmax // Not so many we're overcrowded;
+                                         // possible to make higher than smax to
+                                         // give unfair advantage to newborns.
             }
         }
 
