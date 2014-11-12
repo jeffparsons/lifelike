@@ -30,13 +30,13 @@ impl PartialEq for Color {
 impl Image {
     pub fn load_png(path: &Path) -> Image {
         let image = match png::load_png(path) {
-            Err(m) => fail!(m),
+            Err(m) => panic!(m),
             Ok(image) => image,
         };
         println!("File dimensions: (width, height) = ({}, {}).", image.width, image.height);
         let pixel_data = match image.pixels {
             RGBA8(pixels) => pixels,
-            _ => fail!("Only handling RGBA8 input for now."),
+            _ => panic!("Only handling RGBA8 input for now."),
         };
         Image {
             pixel_data: pixel_data,
@@ -74,9 +74,9 @@ impl Image {
 
     pub fn set_color_at(&mut self, point: Point, color: Color) {
         let pixel_offset = self.linear_index(point) * 4;
-        *self.pixel_data.get_mut(pixel_offset) = color.red;
-        *self.pixel_data.get_mut(pixel_offset + 1) = color.green;
-        *self.pixel_data.get_mut(pixel_offset + 2) = color.blue;
+        self.pixel_data[pixel_offset] = color.red;
+        self.pixel_data[pixel_offset + 1] = color.green;
+        self.pixel_data[pixel_offset + 2] = color.blue;
     }
 
     pub fn linear_index(&self, point: Point) -> uint {

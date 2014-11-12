@@ -2,15 +2,15 @@
 name = "lifelike"
 version = "0.0.1"
 dependencies = [
- "png 0.1.0 (git+https://github.com/servo/rust-png.git#74418ffbf20e94b0d3bed4a9d004062a13342c79)",
+ "png 0.1.0 (git+https://github.com/servo/rust-png.git)",
 ]
 
 [[package]]
 name = "png"
 version = "0.1.0"
-source = "git+https://github.com/servo/rust-png.git#74418ffbf20e94b0d3bed4a9d004062a13342c79"
+source = "git+https://github.com/servo/rust-png.git#b0b4acde0080dd475dee93615276bfc19207a21e"
 dependencies = [
- "png-sys 1.6.3 (git+https://github.com/servo/libpng?ref=servo#d01f32b4eb86904695efe7fc02b574f902e21a98)",
+ "png-sys 1.6.3 (git+https://github.com/servo/libpng?ref=servo)",
 ]
 
 [[package]]

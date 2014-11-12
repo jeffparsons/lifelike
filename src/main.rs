@@ -8,7 +8,6 @@ use core::mem;
 use std::os;
 use std::rand::{task_rng, Rng};
 
-use collections::Deque;
 use collections::RingBuf;
 use collections::String;
 
@@ -32,7 +31,7 @@ fn get_uint_opt(matches: &Matches, opt_name: &str) -> Option<uint> {
     match matches.opt_str(opt_name) {
         Some(string) => match from_str(string.as_slice().trim()) {
             Some(value) => Some(value),
-            None => fail!("Bad uint arg"),
+            None => panic!("Bad uint arg"),
         },
         None => None,
     }
@@ -55,7 +54,7 @@ fn main() {
     ];
     let matches = match getopts(args.tail(), opts) {
         Ok(m) => { m }
-        Err(f) => { fail!(f.to_string()) }
+        Err(f) => { panic!(f.to_string()) }
     };
     if matches.opt_present("h") {
         print_usage(program.as_slice(), opts);
@@ -99,10 +98,10 @@ fn main() {
     // Create per-cell scratch space here so we don't need to allocate
     // again for every cell we visit.
     let mut cell_point_queue: RingBuf<Point> = RingBuf::with_capacity(pixels);
-    point_queue.push(Point{ x: 0, y: 0 });
+    point_queue.push_back(Point{ x: 0, y: 0 });
     while !point_queue.is_empty() {
         let point = match point_queue.pop_front() {
-            None => fail!(),
+            None => panic!(),
             Some(p) => p,
         };
         // It might have already been consumed by another cell.
@@ -113,7 +112,7 @@ fn main() {
                 pixels: Vec::with_capacity(100),
             });
             let cell_index = cells.len() - 1;
-            *cell_map.get_mut(image.linear_index(point)) = Some(cell_index);
+            cell_map[image.linear_index(point)] = Some(cell_index);
 
             // Need to explore a single cell exhaustively before moving on;
             // otherwise we might interpret a strangely shaped cell as two
@@ -193,7 +192,7 @@ fn main() {
             }
 
             // Apply life rules.
-            *back.get_mut(i) = if alive {
+            back[i] = if alive {
                 living_neighbors >= smin && // Sufficient neighbors to sustain.
                 living_neighbors <= smax // Not so many we're overcrowded.
             } else {
@@ -221,13 +220,13 @@ fn flood_cell(
 ) {
     let cell_color = (*cells)[cell_index].color;
     cell_point_queue.clear();
-    cell_point_queue.push(starting_point);
+    cell_point_queue.push_back(starting_point);
     while !cell_point_queue.is_empty() {
         let point = match cell_point_queue.pop_front() {
-            None => fail!(),
+            None => panic!(),
             Some(p) => p,
         };
-        cells.get_mut(cell_index).pixels.push(point);
+        cells[cell_index].pixels.push(point);
         let neighbors = point_neighbors(point);
         for neighbor in neighbors.iter() {
             let mut neighbor = *neighbor;
@@ -255,18 +254,18 @@ fn flood_cell(
                 continue;
             }
 
-            let neighbor_cell = cell_map.get_mut(image.linear_index(neighbor));
+            let neighbor_cell = &mut cell_map[image.linear_index(neighbor)];
             match *neighbor_cell {
                 None => {
                     if image.color_at(neighbor) == cell_color {
                         // Same color as this cell; add it to the cell and queue it
                         // up as a starting point for further explanation.
                         *neighbor_cell = Some(cell_index);
-                        cell_point_queue.push(neighbor);
+                        cell_point_queue.push_back(neighbor);
                     } else {
                         // Doesn't belong to this cell; queue it up to maybe
                         // be the start of another cell.
-                        point_queue.push(neighbor);
+                        point_queue.push_back(neighbor);
 
                         // Neighbor is another color, so will eventually be part of another cell.
                         // Mark the current pixel (not the neighbor) as the edge of a cell.
@@ -281,8 +280,8 @@ fn flood_cell(
 
                         // Mark the cells as neighbors if they're not already.
                         if !(*cells)[cell_index].neighbors.contains(&neighbor_cell) {
-                            cells.get_mut(cell_index).neighbors.push(neighbor_cell);
-                            cells.get_mut(neighbor_cell).neighbors.push(cell_index);
+                            cells[cell_index].neighbors.push(neighbor_cell);
+                            cells[neighbor_cell].neighbors.push(cell_index);
                         }
                     }
                 }
