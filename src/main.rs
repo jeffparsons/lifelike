@@ -5,6 +5,8 @@ extern crate getopts;
 
 use core::mem;
 
+use std::io;
+use std::io::fs::mkdir;
 use std::os;
 use std::rand::{task_rng, Rng};
 
@@ -131,6 +133,18 @@ fn main() {
         }
     }
     println!("Found {} cells.", cells.len());
+
+    // Ensure output directory exists.
+    let res = mkdir(&Path::new("./image_out"), io::USER_DIR);
+    match res {
+        Err(e) => {
+            match e.kind {
+                io::IoErrorKind::OtherIoError => {}, // For some reason not PathAlreadyExists...
+                _ => panic!("Couldn't create output directory! {}", e.kind),
+            }
+        },
+        _ => {},
+    }
 
     // Write out discovered cell boundaries.
     // cell_boundaries.save_png(&Path::new("image_out/cell_boundaries.png"));
