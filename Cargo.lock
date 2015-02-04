@@ -6,15 +6,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "gcc"
+version = "0.1.7"
+source = "git+https://github.com/alexcrichton/gcc-rs#016cc1597bbe52c26e41cf687476ba93f27fec41"
+
+[[package]]
 name = "png"
 version = "0.1.0"
-source = "git+https://github.com/servo/rust-png.git#b0b4acde0080dd475dee93615276bfc19207a21e"
+source = "git+https://github.com/servo/rust-png.git#687f103498654815682d2a750f26bbefc46d9da4"
 dependencies = [
- "png-sys 1.6.3 (git+https://github.com/servo/libpng?ref=servo)",
+ "gcc 0.1.7 (git+https://github.com/alexcrichton/gcc-rs)",
+ "png-sys 1.6.16 (git+https://github.com/servo/rust-png.git)",
 ]
 
 [[package]]
 name = "png-sys"
-version = "1.6.3"
-source = "git+https://github.com/servo/libpng?ref=servo#d01f32b4eb86904695efe7fc02b574f902e21a98"
+version = "1.6.16"
+source = "git+https://github.com/servo/rust-png.git#687f103498654815682d2a750f26bbefc46d9da4"
 

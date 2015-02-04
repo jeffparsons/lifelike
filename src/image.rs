@@ -1,6 +1,7 @@
 extern crate png;
 
-use png::RGBA8;
+use png::PixelsByColorType;
+use std::iter::repeat;
 
 pub struct Image {
     pub pixel_data: Vec<u8>,
@@ -8,11 +9,13 @@ pub struct Image {
     pub height: u32,
 }
 
+#[derive(Copy)]
 pub struct Point {
     pub x: i32,
     pub y: i32,
 }
 
+#[derive(Copy)]
 pub struct Color {
     pub red: u8,
     pub green: u8,
@@ -35,7 +38,7 @@ impl Image {
         };
         println!("File dimensions: (width, height) = ({}, {}).", image.width, image.height);
         let pixel_data = match image.pixels {
-            RGBA8(pixels) => pixels,
+            PixelsByColorType::RGBA8(pixels) => pixels,
             _ => panic!("Only handling RGBA8 input for now."),
         };
         Image {
@@ -49,7 +52,7 @@ impl Image {
         let mut img = png::Image {
             width: self.width,
             height: self.height,
-            pixels: png::RGBA8(self.pixel_data.clone()),
+            pixels: PixelsByColorType::RGBA8(self.pixel_data.clone()),
         };
         let res = png::store_png(&mut img, path);
         assert!(res.is_ok());
@@ -59,7 +62,7 @@ impl Image {
         Image {
             width: width,
             height: height,
-            pixel_data: Vec::from_elem((width * height * 4) as uint, 255u8),
+            pixel_data: repeat(255u8).take((width * height * 4) as usize).collect(),
         }
     }
 

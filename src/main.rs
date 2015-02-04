@@ -1,14 +1,13 @@
-extern crate core;
 extern crate collections;
 extern crate png;
 extern crate getopts;
 
-use core::mem;
-
-use std::io;
-use std::io::fs::mkdir;
+use std::mem;
+use std::old_io;
+use std::old_io::fs::mkdir;
 use std::os;
-use std::rand::{task_rng, Rng};
+use std::rand::{thread_rng, Rng};
+use std::iter::repeat;
 
 use collections::RingBuf;
 use collections::String;
@@ -22,18 +21,18 @@ struct Cell {
     color: Color,
     neighbors: Vec<uint>,
     pixels: Vec<Point>,
-}
 
+}
 fn print_usage(program: &str, opts: &[OptGroup]) {
     let short_message = format!("Usage: {} [options] <input_file>", program);
     println!("{}", usage(short_message.as_slice(), opts));
 }
 
-fn get_uint_opt(matches: &Matches, opt_name: &str) -> Option<uint> {
+fn get_u32_opt(matches: &Matches, opt_name: &str) -> Option<u32> {
     match matches.opt_str(opt_name) {
-        Some(string) => match from_str(string.as_slice().trim()) {
-            Some(value) => Some(value),
-            None => panic!("Bad uint arg"),
+        Some(string) => match string.trim().parse::<u32>() {
+            Ok(value) => Some(value),
+            Err(_) => panic!("Bad unsigned int arg"),
         },
         None => None,
     }
@@ -54,30 +53,30 @@ fn main() {
         optopt("o", "output-prefix", "prefix for output frame files", "STRING"),
         optflag("h", "help", "print usage information"),
     ];
-    let matches = match getopts(args.tail(), opts) {
+    let matches = match getopts(args.tail(), &opts) {
         Ok(m) => { m }
         Err(f) => { panic!(f.to_string()) }
     };
     if matches.opt_present("h") {
-        print_usage(program.as_slice(), opts);
+        print_usage(program.as_slice(), &opts);
         return;
     }
     let input = if matches.free.len() == 1 {
         matches.free[0].clone()
     } else {
-        print_usage(program.as_slice(), opts);
+        print_usage(program.as_slice(), &opts);
         return;
     };
     let output_prefix = matches.opt_str("output-prefix").unwrap_or(String::from_str("frame_"));
 
-    let frames = get_uint_opt(&matches, "frames").unwrap_or(100);
+    let frames = get_u32_opt(&matches, "frames").unwrap_or(100);
     let wrap = matches.opt_present("w");
     let proportional = matches.opt_present("p");
 
-    let smin = get_uint_opt(&matches, "smin").unwrap_or(2);
-    let smax = get_uint_opt(&matches, "smax").unwrap_or(3);
-    let rmin = get_uint_opt(&matches, "rmin").unwrap_or(3);
-    let rmax = get_uint_opt(&matches, "rmax").unwrap_or(3);
+    let smin = get_u32_opt(&matches, "smin").unwrap_or(2);
+    let smax = get_u32_opt(&matches, "smax").unwrap_or(3);
+    let rmin = get_u32_opt(&matches, "rmin").unwrap_or(3);
+    let rmax = get_u32_opt(&matches, "rmax").unwrap_or(3);
 
     // Load example PNG image.
     // let file = "examples/hex_square_tri_large.png";
@@ -94,7 +93,7 @@ fn main() {
     println!("Finding cells in image...");
     let pixels = (image.width * image.height) as uint;
     // TODO: reinstate separate `visited` map, too, for faster checking?
-    let mut cell_map: Vec<Option<uint>> = Vec::from_elem(pixels, None);
+    let mut cell_map: Vec<Option<uint>> = repeat(None).take(pixels).collect();
     let mut cells: Vec<Cell> = Vec::with_capacity(100);
     let mut point_queue: RingBuf<Point> = RingBuf::with_capacity(pixels);
     // Create per-cell scratch space here so we don't need to allocate
@@ -135,12 +134,13 @@ fn main() {
     println!("Found {} cells.", cells.len());
 
     // Ensure output directory exists.
-    let res = mkdir(&Path::new("./image_out"), io::USER_DIR);
+    let res = mkdir(&Path::new("./image_out"), old_io::USER_DIR);
     match res {
         Err(e) => {
             match e.kind {
-                io::IoErrorKind::OtherIoError => {}, // For some reason not PathAlreadyExists...
-                _ => panic!("Couldn't create output directory! {}", e.kind),
+                old_io::IoErrorKind::PathAlreadyExists => {},
+                // For some reason not PathAlreadyExists...
+                _ => panic!("Couldn't create output directory! {:?}", e.kind),
             }
         },
         _ => {},
@@ -149,18 +149,22 @@ fn main() {
     // Write out discovered cell boundaries.
     // cell_boundaries.save_png(&Path::new("image_out/cell_boundaries.png"));
 
-    // Randomise initial world state.
-    let mut rng = task_rng();
-    let rng_iter = rng.gen_iter::<bool>();
-    let mut front: &mut Vec<bool> = &mut rng_iter.take(cells.len()).collect::<Vec<bool>>();
+    // Make back buffer for world. Must be created before either front
+    // or back buffer reference to ensure lifetime exceeds those references.
+    let mut buffer_one = repeat(false).take(cells.len()).collect();
 
-    // Make back buffer for world.
-    let mut back: &mut Vec<bool> = &mut Vec::from_elem(cells.len(), false);
+    // Randomise initial world state.
+    let mut rng = thread_rng();
+    let rng_iter = rng.gen_iter::<bool>();
+    let mut front: &mut Vec<bool> = &mut rng_iter.take(cells.len()).collect();
+
+    // Hook up initial back buffer reference.
+    let mut back: &mut Vec<bool> = &mut buffer_one;
 
     // Step world, writing out an image of the current state
     // at the start of each frame.
     let mut world_image = Image::white(image.width, image.height);
-    for frame in range(0, frames) {
+    for frame in 0..frames {
         // Write out current state.
         for (i, cell) in cells.iter().enumerate() {
             for p in cell.pixels.iter() {
@@ -173,8 +177,8 @@ fn main() {
             }
         }
         // Overlay cell boundaries.
-        for y in range(0, image.height as i32) {
-            for x in range(0, image.width as i32) {
+        for y in 0..image.height as i32 {
+            for x in 0..image.width as i32 {
                 let p = Point{ x: x, y: y };
                 let color_in_boundary_image = cell_boundaries.color_at(p);
                 let white = Color{ red: 255, green: 255, blue: 255 };
@@ -189,20 +193,20 @@ fn main() {
         world_image.save_png(&Path::new(frame_file));
 
         // Calculate next frame.
-        for i in range(0, cells.len()) {
+        for i in 0..cells.len() {
             let alive = (*front)[i];
-            let mut living_neighbors = 0u;
+            let mut living_neighbors = 0u32;
             for neighbor in cells[i].neighbors.iter() {
                 if (*front)[*neighbor] {
                     if proportional {
-                        living_neighbors += cells[*neighbor].neighbors.len();
+                        living_neighbors += cells[*neighbor].neighbors.len() as u32;
                     } else {
                         living_neighbors += 1;
                     }
                 }
             }
             if proportional {
-                living_neighbors = living_neighbors * 4 / cells[i].neighbors.len();
+                living_neighbors = living_neighbors * 4 / cells[i].neighbors.len() as u32;
             }
 
             // Apply life rules.
@@ -308,7 +312,7 @@ fn mark_cell_border(point: Point, cell_boundaries: &mut Image) {
     cell_boundaries.set_color_at(point, Color{red: 127, green: 127, blue: 127});
 }
 
-fn point_neighbors(point: Point) -> [Point, ..8] {
+fn point_neighbors(point: Point) -> [Point; 8] {
     [
         Point{ x: point.x - 1, y: point.y - 1 },
         Point{ x: point.x,     y: point.y - 1 },
