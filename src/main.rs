@@ -12,20 +12,20 @@ use std::iter::repeat;
 use collections::RingBuf;
 use collections::String;
 
-use getopts::{optopt, optflag, getopts, OptGroup, Matches, usage};
+use getopts::{Options, Matches};
 
 use image::{Image, Color, Point};
 mod image;
 
 struct Cell {
     color: Color,
-    neighbors: Vec<uint>,
+    neighbors: Vec<usize>,
     pixels: Vec<Point>,
 
 }
-fn print_usage(program: &str, opts: &[OptGroup]) {
+fn print_usage(program: &str, opts: Options) {
     let short_message = format!("Usage: {} [options] <input_file>", program);
-    println!("{}", usage(short_message.as_slice(), opts));
+    println!("{}", opts.usage(short_message.as_slice()));
 }
 
 fn get_u32_opt(matches: &Matches, opt_name: &str) -> Option<u32> {
@@ -42,29 +42,28 @@ fn main() {
     // Parse program arguments.
     let args: Vec<String> = os::args();
     let program = args[0].clone();
-    let opts = [
-        optopt("", "smin", "minimum neighbors for existing cell to survive", "UINT"),
-        optopt("", "smax", "maximum neighbors for existing cell to survive", "UINT"),
-        optopt("", "rmin", "minimum neighbors for new cell to be born", "UINT"),
-        optopt("", "rmax", "maximum neighbors for new cell to be born", "UINT"),
-        optopt("f", "frames", "number of frames to render", "UINT"),
-        optflag("w", "wrap", "treat image space as toroidal"),
-        optflag("p", "proportional", "weight neighbors by how many neighbors they have"),
-        optopt("o", "output-prefix", "prefix for output frame files", "STRING"),
-        optflag("h", "help", "print usage information"),
-    ];
-    let matches = match getopts(args.tail(), &opts) {
+    let mut opts = Options::new();
+    opts.optopt("", "smin", "minimum neighbors for existing cell to survive", "UINT");
+    opts.optopt("", "smax", "maximum neighbors for existing cell to survive", "UINT");
+    opts.optopt("", "rmin", "minimum neighbors for new cell to be born", "UINT");
+    opts.optopt("", "rmax", "maximum neighbors for new cell to be born", "UINT");
+    opts.optopt("f", "frames", "number of frames to render", "UINT");
+    opts.optflag("w", "wrap", "treat image space as toroidal");
+    opts.optflag("p", "proportional", "weight neighbors by how many neighbors they have");
+    opts.optopt("o", "output-prefix", "prefix for output frame files", "STRING");
+    opts.optflag("h", "help", "print usage information");
+    let matches = match opts.parse(args.tail()) {
         Ok(m) => { m }
         Err(f) => { panic!(f.to_string()) }
     };
     if matches.opt_present("h") {
-        print_usage(program.as_slice(), &opts);
+        print_usage(program.as_slice(), opts);
         return;
     }
     let input = if matches.free.len() == 1 {
         matches.free[0].clone()
     } else {
-        print_usage(program.as_slice(), &opts);
+        print_usage(program.as_slice(), opts);
         return;
     };
     let output_prefix = matches.opt_str("output-prefix").unwrap_or(String::from_str("frame_"));
@@ -91,9 +90,9 @@ fn main() {
     // Explore image breadth-first to break it
     // into cells of the same color.
     println!("Finding cells in image...");
-    let pixels = (image.width * image.height) as uint;
+    let pixels = (image.width * image.height) as usize;
     // TODO: reinstate separate `visited` map, too, for faster checking?
-    let mut cell_map: Vec<Option<uint>> = repeat(None).take(pixels).collect();
+    let mut cell_map: Vec<Option<usize>> = repeat(None).take(pixels).collect();
     let mut cells: Vec<Cell> = Vec::with_capacity(100);
     let mut point_queue: RingBuf<Point> = RingBuf::with_capacity(pixels);
     // Create per-cell scratch space here so we don't need to allocate
@@ -227,11 +226,11 @@ fn main() {
 
 fn flood_cell(
     cells: &mut Vec<Cell>,
-    cell_map: &mut Vec<Option<uint>>,
+    cell_map: &mut Vec<Option<usize>>,
     point_queue: &mut RingBuf<Point>,
     cell_point_queue: &mut RingBuf<Point>,
     starting_point: Point,
-    cell_index: uint,
+    cell_index: usize,
     image: &Image,
     cell_boundaries: &mut Image,
     wrap: bool,

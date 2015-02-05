@@ -82,7 +82,7 @@ impl Image {
         self.pixel_data[pixel_offset + 2] = color.blue;
     }
 
-    pub fn linear_index(&self, point: Point) -> uint {
-        point.y as uint * self.width as uint + point.x as uint
+    pub fn linear_index(&self, point: Point) -> usize {
+        point.y as usize * self.width as usize + point.x as usize
     }
 }
