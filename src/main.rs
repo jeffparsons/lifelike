@@ -1,18 +1,24 @@
+#![feature(collections)]
+#![feature(convert)]
+
 extern crate collections;
 extern crate png;
 extern crate getopts;
+extern crate rand;
 
+use std::env;
 use std::mem;
-use std::old_io;
-use std::old_io::fs::mkdir;
-use std::os;
-use std::rand::{thread_rng, Rng};
+use std::fs;
 use std::iter::repeat;
+use std::path;
+use std::iter::FromIterator;
 
-use collections::RingBuf;
+use std::collections::vec_deque::VecDeque;
 use collections::String;
 
 use getopts::{Options, Matches};
+
+use rand::{thread_rng, Rng};
 
 use image::{Image, Color, Point};
 mod image;
@@ -25,7 +31,7 @@ struct Cell {
 }
 fn print_usage(program: &str, opts: Options) {
     let short_message = format!("Usage: {} [options] <input_file>", program);
-    println!("{}", opts.usage(short_message.as_slice()));
+    println!("{}", opts.usage(short_message.as_str()));
 }
 
 fn get_u32_opt(matches: &Matches, opt_name: &str) -> Option<u32> {
@@ -40,7 +46,7 @@ fn get_u32_opt(matches: &Matches, opt_name: &str) -> Option<u32> {
 
 fn main() {
     // Parse program arguments.
-    let args: Vec<String> = os::args();
+    let args: Vec<String> = Vec::from_iter(env::args());
     let program = args[0].clone();
     let mut opts = Options::new();
     opts.optopt("", "smin", "minimum neighbors for existing cell to survive", "UINT");
@@ -57,13 +63,13 @@ fn main() {
         Err(f) => { panic!(f.to_string()) }
     };
     if matches.opt_present("h") {
-        print_usage(program.as_slice(), opts);
+        print_usage(program.as_str(), opts);
         return;
     }
     let input = if matches.free.len() == 1 {
         matches.free[0].clone()
     } else {
-        print_usage(program.as_slice(), opts);
+        print_usage(program.as_str(), opts);
         return;
     };
     let output_prefix = matches.opt_str("output-prefix").unwrap_or(String::from_str("frame_"));
@@ -82,7 +88,7 @@ fn main() {
     // let file = "examples/cartesian_grid.png";
     // let file = "examples/hex_grid.png";
     println!("Loading '{}'.", input);
-    let image = Image::load_png(&Path::new(input));
+    let image = Image::load_png(&path::Path::new(&input));
 
     // Draw discovered cell boundaries into a new image.
     let mut cell_boundaries = Image::white(image.width, image.height);
@@ -94,10 +100,10 @@ fn main() {
     // TODO: reinstate separate `visited` map, too, for faster checking?
     let mut cell_map: Vec<Option<usize>> = repeat(None).take(pixels).collect();
     let mut cells: Vec<Cell> = Vec::with_capacity(100);
-    let mut point_queue: RingBuf<Point> = RingBuf::with_capacity(pixels);
+    let mut point_queue: VecDeque<Point> = VecDeque::with_capacity(pixels);
     // Create per-cell scratch space here so we don't need to allocate
     // again for every cell we visit.
-    let mut cell_point_queue: RingBuf<Point> = RingBuf::with_capacity(pixels);
+    let mut cell_point_queue: VecDeque<Point> = VecDeque::with_capacity(pixels);
     point_queue.push_back(Point{ x: 0, y: 0 });
     while !point_queue.is_empty() {
         let point = match point_queue.pop_front() {
@@ -133,20 +139,16 @@ fn main() {
     println!("Found {} cells.", cells.len());
 
     // Ensure output directory exists.
-    let res = mkdir(&Path::new("./image_out"), old_io::USER_DIR);
+    let res = fs::create_dir_all(&path::Path::new("./image_out"));
     match res {
         Err(e) => {
-            match e.kind {
-                old_io::IoErrorKind::PathAlreadyExists => {},
-                // For some reason not PathAlreadyExists...
-                _ => panic!("Couldn't create output directory! {:?}", e.kind),
-            }
+            panic!("Couldn't create output directory! {}", e)
         },
         _ => {},
     }
 
     // Write out discovered cell boundaries.
-    // cell_boundaries.save_png(&Path::new("image_out/cell_boundaries.png"));
+    // cell_boundaries.save_png(&path::Path::new("image_out/cell_boundaries.png"));
 
     // Make back buffer for world. Must be created before either front
     // or back buffer reference to ensure lifetime exceeds those references.
@@ -189,7 +191,7 @@ fn main() {
 
         let frame_file = format!("image_out/{}{:0>8}.png", output_prefix, frame);
         println!("Writing frame to '{}'.", frame_file);
-        world_image.save_png(&Path::new(frame_file));
+        world_image.save_png(&path::Path::new(&frame_file));
 
         // Calculate next frame.
         for i in 0..cells.len() {
@@ -227,8 +229,8 @@ fn main() {
 fn flood_cell(
     cells: &mut Vec<Cell>,
     cell_map: &mut Vec<Option<usize>>,
-    point_queue: &mut RingBuf<Point>,
-    cell_point_queue: &mut RingBuf<Point>,
+    point_queue: &mut VecDeque<Point>,
+    cell_point_queue: &mut VecDeque<Point>,
     starting_point: Point,
     cell_index: usize,
     image: &Image,

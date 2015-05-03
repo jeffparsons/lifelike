@@ -2,6 +2,7 @@ extern crate png;
 
 use png::PixelsByColorType;
 use std::iter::repeat;
+use std::path;
 
 pub struct Image {
     pub pixel_data: Vec<u8>,
@@ -9,13 +10,13 @@ pub struct Image {
     pub height: u32,
 }
 
-#[derive(Copy)]
+#[derive(Copy, Clone)]
 pub struct Point {
     pub x: i32,
     pub y: i32,
 }
 
-#[derive(Copy)]
+#[derive(Copy, Clone)]
 pub struct Color {
     pub red: u8,
     pub green: u8,
@@ -31,7 +32,7 @@ impl PartialEq for Color {
 }
 
 impl Image {
-    pub fn load_png(path: &Path) -> Image {
+    pub fn load_png(path: &path::Path) -> Image {
         let image = match png::load_png(path) {
             Err(m) => panic!(m),
             Ok(image) => image,
@@ -48,7 +49,7 @@ impl Image {
         }
     }
 
-    pub fn save_png(&self, path: &Path) {
+    pub fn save_png(&self, path: &path::Path) {
         let mut img = png::Image {
             width: self.width,
             height: self.height,
