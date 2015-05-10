@@ -23,6 +23,8 @@ use rand::{thread_rng, Rng};
 use image::{Image, Color, Point};
 mod image;
 
+mod window;
+
 struct Cell {
     color: Color,
     neighbors: Vec<usize>,
@@ -45,6 +47,13 @@ fn get_u32_opt(matches: &Matches, opt_name: &str) -> Option<u32> {
 }
 
 fn main() {
+
+    let win = window::Window::new(800, 600);
+    win.run();
+
+
+    return;
+
     // Parse program arguments.
     let args: Vec<String> = Vec::from_iter(env::args());
     let program = args[0].clone();
