@@ -16,6 +16,21 @@ pub struct Point {
     pub y: i32,
 }
 
+impl Point {
+    pub fn neighbors(&self) -> [Point; 8] {
+        [
+            Point{ x: self.x - 1, y: self.y - 1 },
+            Point{ x: self.x,     y: self.y - 1 },
+            Point{ x: self.x + 1, y: self.y - 1 },
+            Point{ x: self.x - 1, y: self.y     },
+            Point{ x: self.x + 1, y: self.y     },
+            Point{ x: self.x - 1, y: self.y + 1 },
+            Point{ x: self.x,     y: self.y + 1 },
+            Point{ x: self.x + 1, y: self.y + 1 },
+        ]
+    }
+}
+
 #[derive(Copy, Clone)]
 pub struct Color {
     pub red: u8,

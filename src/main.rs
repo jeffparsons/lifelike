@@ -7,30 +7,20 @@ extern crate getopts;
 extern crate rand;
 
 use std::env;
-use std::mem;
 use std::fs;
-use std::iter::repeat;
 use std::path;
 use std::iter::FromIterator;
 
-use std::collections::vec_deque::VecDeque;
 use collections::String;
-
 use getopts::{Options, Matches};
 
-use rand::{thread_rng, Rng};
-
-use image::{Image, Color, Point};
+mod world;
 mod image;
-
 mod window;
+mod world_builder;
 
-struct Cell {
-    color: Color,
-    neighbors: Vec<usize>,
-    pixels: Vec<Point>,
+use image::Image;
 
-}
 fn print_usage(program: &str, opts: Options) {
     let short_message = format!("Usage: {} [options] <input_file>", program);
     println!("{}", opts.usage(short_message.as_str()));
@@ -47,13 +37,6 @@ fn get_u32_opt(matches: &Matches, opt_name: &str) -> Option<u32> {
 }
 
 fn main() {
-
-    let win = window::Window::new(800, 600);
-    win.run();
-
-
-    return;
-
     // Parse program arguments.
     let args: Vec<String> = Vec::from_iter(env::args());
     let program = args[0].clone();
@@ -99,55 +82,20 @@ fn main() {
     println!("Loading '{}'.", input);
     let image = Image::load_png(&path::Path::new(&input));
 
-    // Draw discovered cell boundaries into a new image.
-    let mut cell_boundaries = Image::white(image.width, image.height);
-
-    // Explore image breadth-first to break it
-    // into cells of the same color.
-    println!("Finding cells in image...");
-    let pixels = (image.width * image.height) as usize;
-    // TODO: reinstate separate `visited` map, too, for faster checking?
-    let mut cell_map: Vec<Option<usize>> = repeat(None).take(pixels).collect();
-    let mut cells: Vec<Cell> = Vec::with_capacity(100);
-    let mut point_queue: VecDeque<Point> = VecDeque::with_capacity(pixels);
-    // Create per-cell scratch space here so we don't need to allocate
-    // again for every cell we visit.
-    let mut cell_point_queue: VecDeque<Point> = VecDeque::with_capacity(pixels);
-    point_queue.push_back(Point{ x: 0, y: 0 });
-    while !point_queue.is_empty() {
-        let point = match point_queue.pop_front() {
-            None => panic!(),
-            Some(p) => p,
-        };
-        // It might have already been consumed by another cell.
-        if cell_map[image.linear_index(point)] == None {
-            cells.push(Cell{
-                color: image.color_at(point),
-                neighbors: Vec::with_capacity(8),
-                pixels: Vec::with_capacity(100),
-            });
-            let cell_index = cells.len() - 1;
-            cell_map[image.linear_index(point)] = Some(cell_index);
-
-            // Need to explore a single cell exhaustively before moving on;
-            // otherwise we might interpret a strangely shaped cell as two
-            // different cells and then have to join them up somehow later.
-            flood_cell(
-                &mut cells,
-                &mut cell_map,
-                &mut point_queue,
-                &mut cell_point_queue,
-                point,
-                cell_index,
-                &image,
-                &mut cell_boundaries,
-                wrap,
-            );
-        }
-    }
-    println!("Found {} cells.", cells.len());
+    // TODO: instead of these long constructors, have a big old 'worldspec' that gets passed to most.
+    let builder = world_builder::WorldBuilder::new(
+        image,
+        wrap,
+        smin,
+        smax,
+        rmin,
+        rmax,
+        proportional,
+    );
+    let mut world = builder.build();
 
     // Ensure output directory exists.
+    // TODO: only if you're the image dumper runner dealie.
     let res = fs::create_dir_all(&path::Path::new("./image_out"));
     match res {
         Err(e) => {
@@ -156,181 +104,25 @@ fn main() {
         _ => {},
     }
 
-    // Write out discovered cell boundaries.
-    // cell_boundaries.save_png(&path::Path::new("image_out/cell_boundaries.png"));
-
-    // Make back buffer for world. Must be created before either front
-    // or back buffer reference to ensure lifetime exceeds those references.
-    let mut buffer_one = repeat(false).take(cells.len()).collect();
-
-    // Randomise initial world state.
-    let mut rng = thread_rng();
-    let rng_iter = rng.gen_iter::<bool>();
-    let mut front: &mut Vec<bool> = &mut rng_iter.take(cells.len()).collect();
-
-    // Hook up initial back buffer reference.
-    let mut back: &mut Vec<bool> = &mut buffer_one;
-
-    // Step world, writing out an image of the current state
-    // at the start of each frame.
-    let mut world_image = Image::white(image.width, image.height);
+    // TODO: only write frames out if we're supposed to.
+    // Need to decide how these things interact:
+    // - stepping the world
+    // - gui event loop
+    // - writing out to files
+    // Maybe only allow one at a time, and just have the runner
+    // take complete ownership over the world.
     for frame in 0..frames {
-        // Write out current state.
-        for (i, cell) in cells.iter().enumerate() {
-            for p in cell.pixels.iter() {
-                let color = if (*front)[i] {
-                    Color{ red: 63, green: 63, blue: 63 }
-                } else {
-                    Color{ red: 255, green: 255, blue: 255 }
-                };
-                world_image.set_color_at(*p, color);
-            }
-        }
-        // Overlay cell boundaries.
-        for y in 0..image.height as i32 {
-            for x in 0..image.width as i32 {
-                let p = Point{ x: x, y: y };
-                let color_in_boundary_image = cell_boundaries.color_at(p);
-                let white = Color{ red: 255, green: 255, blue: 255 };
-                if color_in_boundary_image != white {
-                    world_image.set_color_at(p, color_in_boundary_image);
-                }
-            }
-        }
+        world.update_world_image();
 
         let frame_file = format!("image_out/{}{:0>8}.png", output_prefix, frame);
         println!("Writing frame to '{}'.", frame_file);
-        world_image.save_png(&path::Path::new(&frame_file));
+        world.image().save_png(&path::Path::new(&frame_file));
 
-        // Calculate next frame.
-        for i in 0..cells.len() {
-            let alive = (*front)[i];
-            let mut living_neighbors = 0u32;
-            for neighbor in cells[i].neighbors.iter() {
-                if (*front)[*neighbor] {
-                    if proportional {
-                        living_neighbors += cells[*neighbor].neighbors.len() as u32;
-                    } else {
-                        living_neighbors += 1;
-                    }
-                }
-            }
-            if proportional {
-                living_neighbors = living_neighbors * 4 / cells[i].neighbors.len() as u32;
-            }
-
-            // Apply life rules.
-            back[i] = if alive {
-                living_neighbors >= smin && // Sufficient neighbors to sustain.
-                living_neighbors <= smax // Not so many we're overcrowded.
-            } else {
-                living_neighbors >= rmin && // Sufficient neighbors to reproduce.
-                living_neighbors <= rmax // Not so many we're overcrowded;
-                                         // possible to make higher than smax to
-                                         // give unfair advantage to newborns.
-            }
-        }
-
-        mem::swap(&mut front, &mut back);
+        world.step();
     }
+
+    // TODO: not like this! :)
+    let win = window::Window::new(800, 600);
+    win.run();
 }
 
-fn flood_cell(
-    cells: &mut Vec<Cell>,
-    cell_map: &mut Vec<Option<usize>>,
-    point_queue: &mut VecDeque<Point>,
-    cell_point_queue: &mut VecDeque<Point>,
-    starting_point: Point,
-    cell_index: usize,
-    image: &Image,
-    cell_boundaries: &mut Image,
-    wrap: bool,
-) {
-    let cell_color = (*cells)[cell_index].color;
-    cell_point_queue.clear();
-    cell_point_queue.push_back(starting_point);
-    while !cell_point_queue.is_empty() {
-        let point = match cell_point_queue.pop_front() {
-            None => panic!(),
-            Some(p) => p,
-        };
-        cells[cell_index].pixels.push(point);
-        let neighbors = point_neighbors(point);
-        for neighbor in neighbors.iter() {
-            let mut neighbor = *neighbor;
-
-            // Wrap coordinates if requested.
-            // Note that the result of % depends on the sign of the divisor,
-            // so transpose everything north to avoid negative numbers entirely.
-            if wrap {
-                neighbor = Point{
-                    x: (neighbor.x + image.width as i32) % image.width as i32,
-                    y: (neighbor.y + image.height as i32) % image.height as i32,
-                };
-            }
-
-            // Ignore if outside the image bounds.
-            let oob = !wrap && (
-                neighbor.x < 0 ||
-                neighbor.x >= image.width as i32 ||
-                neighbor.y < 0 ||
-                neighbor.y >= image.height as i32
-            );
-            if oob {
-                // Mark the current pixel (not the neighbor) as the edge of a cell.
-                mark_cell_border(point, cell_boundaries);
-                continue;
-            }
-
-            let neighbor_cell = &mut cell_map[image.linear_index(neighbor)];
-            match *neighbor_cell {
-                None => {
-                    if image.color_at(neighbor) == cell_color {
-                        // Same color as this cell; add it to the cell and queue it
-                        // up as a starting point for further explanation.
-                        *neighbor_cell = Some(cell_index);
-                        cell_point_queue.push_back(neighbor);
-                    } else {
-                        // Doesn't belong to this cell; queue it up to maybe
-                        // be the start of another cell.
-                        point_queue.push_back(neighbor);
-
-                        // Neighbor is another color, so will eventually be part of another cell.
-                        // Mark the current pixel (not the neighbor) as the edge of a cell.
-                        mark_cell_border(point, cell_boundaries);
-                    }
-                },
-                Some(neighbor_cell) => {
-                    if image.color_at(neighbor) != cell_color {
-                        // Neighbor is already part of another cell.
-                        // Mark the current pixel (not the neighbor) as the edge of a cell.
-                        mark_cell_border(point, cell_boundaries);
-
-                        // Mark the cells as neighbors if they're not already.
-                        if !(*cells)[cell_index].neighbors.contains(&neighbor_cell) {
-                            cells[cell_index].neighbors.push(neighbor_cell);
-                            cells[neighbor_cell].neighbors.push(cell_index);
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn mark_cell_border(point: Point, cell_boundaries: &mut Image) {
-    cell_boundaries.set_color_at(point, Color{red: 127, green: 127, blue: 127});
-}
-
-fn point_neighbors(point: Point) -> [Point; 8] {
-    [
-        Point{ x: point.x - 1, y: point.y - 1 },
-        Point{ x: point.x,     y: point.y - 1 },
-        Point{ x: point.x + 1, y: point.y - 1 },
-        Point{ x: point.x - 1, y: point.y     },
-        Point{ x: point.x + 1, y: point.y     },
-        Point{ x: point.x - 1, y: point.y + 1 },
-        Point{ x: point.x,     y: point.y + 1 },
-        Point{ x: point.x + 1, y: point.y + 1 },
-    ]
-}
