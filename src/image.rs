@@ -96,6 +96,7 @@ impl Image {
         self.pixel_data[pixel_offset] = color.red;
         self.pixel_data[pixel_offset + 1] = color.green;
         self.pixel_data[pixel_offset + 2] = color.blue;
+        self.pixel_data[pixel_offset + 3] = 255; // Fixed alpha for now.
     }
 
     pub fn linear_index(&self, point: Point) -> usize {

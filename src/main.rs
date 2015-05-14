@@ -48,7 +48,7 @@ fn main() {
     opts.optopt("f", "frames", "number of frames to render", "UINT");
     opts.optflag("w", "wrap", "treat image space as toroidal");
     opts.optflag("p", "proportional", "weight neighbors by how many neighbors they have");
-    opts.optopt("o", "output-prefix", "prefix for output frame files", "STRING");
+    opts.optopt("o", "output-prefix", "write output frames to this file instead of rendering to screen", "STRING");
     opts.optflag("h", "help", "print usage information");
     let matches = match opts.parse(args.tail()) {
         Ok(m) => { m }
@@ -64,7 +64,7 @@ fn main() {
         print_usage(program.as_str(), opts);
         return;
     };
-    let output_prefix = matches.opt_str("output-prefix").unwrap_or(String::from_str("frame_"));
+    let is_interactive = !matches.opt_present("output-prefix");
 
     let frames = get_u32_opt(&matches, "frames").unwrap_or(100);
     let wrap = matches.opt_present("w");
@@ -94,35 +94,32 @@ fn main() {
     );
     let mut world = builder.build();
 
-    // Ensure output directory exists.
-    // TODO: only if you're the image dumper runner dealie.
-    let res = fs::create_dir_all(&path::Path::new("./image_out"));
-    match res {
-        Err(e) => {
-            panic!("Couldn't create output directory! {}", e)
-        },
-        _ => {},
+    // Either show an interactive window, or run the world for a set amount
+    // of frames, writing them out to files as we go.
+    if is_interactive {
+        let mut win = window::Window::new(world);
+        win.run();
+    } else {
+        // Ensure output directory exists.
+        let res = fs::create_dir_all(&path::Path::new("./image_out"));
+        match res {
+            Err(e) => {
+                panic!("Couldn't create output directory! {}", e)
+            },
+            _ => {},
+        }
+
+        let output_prefix = matches.opt_str("output-prefix").unwrap_or(String::from_str("frame_"));
+
+        for frame in 0..frames {
+            world.update_world_image();
+
+            let frame_file = format!("image_out/{}{:0>8}.png", output_prefix, frame);
+            println!("Writing frame to '{}'.", frame_file);
+            world.image().save_png(&path::Path::new(&frame_file));
+
+            world.step();
+        }
     }
-
-    // TODO: only write frames out if we're supposed to.
-    // Need to decide how these things interact:
-    // - stepping the world
-    // - gui event loop
-    // - writing out to files
-    // Maybe only allow one at a time, and just have the runner
-    // take complete ownership over the world.
-    for frame in 0..frames {
-        world.update_world_image();
-
-        let frame_file = format!("image_out/{}{:0>8}.png", output_prefix, frame);
-        println!("Writing frame to '{}'.", frame_file);
-        world.image().save_png(&path::Path::new(&frame_file));
-
-        world.step();
-    }
-
-    // TODO: not like this! :)
-    let win = window::Window::new(800, 600);
-    win.run();
 }
 
