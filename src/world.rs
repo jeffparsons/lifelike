@@ -1,4 +1,3 @@
-extern crate collections;
 extern crate png;
 extern crate rand;
 

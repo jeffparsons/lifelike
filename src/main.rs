@@ -1,7 +1,3 @@
-#![feature(collections)]
-#![feature(convert)]
-
-extern crate collections;
 extern crate png;
 extern crate getopts;
 extern crate rand;
@@ -10,8 +6,8 @@ use std::env;
 use std::fs;
 use std::path;
 use std::iter::FromIterator;
+use std::string::String;
 
-use collections::String;
 use getopts::{Options, Matches};
 
 mod world;
@@ -50,7 +46,7 @@ fn main() {
     opts.optflag("p", "proportional", "weight neighbors by how many neighbors they have");
     opts.optopt("o", "output-prefix", "write output frames to this file instead of rendering to screen", "STRING");
     opts.optflag("h", "help", "print usage information");
-    let matches = match opts.parse(args.tail()) {
+    let matches = match opts.parse(&args[1..]) {
         Ok(m) => { m }
         Err(f) => { panic!(f.to_string()) }
     };
@@ -109,7 +105,7 @@ fn main() {
             _ => {},
         }
 
-        let output_prefix = matches.opt_str("output-prefix").unwrap_or(String::from_str("frame_"));
+        let output_prefix = matches.opt_str("output-prefix").unwrap_or("frame_".to_string());
 
         for frame in 0..frames {
             world.update_world_image();
